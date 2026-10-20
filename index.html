@@ -76,6 +76,17 @@ ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
 ol.steps code, .mono { font-family: var(--font-mono); font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
 input[type=password], input[type=text] { font: inherit; font-size: 16px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%; }
 .btn:focus-visible, .tabs button:focus-visible, .seg button:focus-visible, input:focus-visible, .file-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pz { display: grid; gap: 8px; margin-top: 6px; }
+.pz-h { font-size: 12px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+.pz-item { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 4px 8px; align-items: start; }
+.pz-item i { width: 16px; height: 16px; border-radius: 50%; display: block; margin-top: 2px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.pz-item b { font-size: 13px; font-weight: 600; }
+.pz-item p { font-size: 12.5px; color: var(--muted); margin: 0; }
+.links { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12.5px; grid-column: 2; }
+.shop-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 6px 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.shop-row i { width: 22px; height: 22px; border-radius: 50%; display: block; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.shop-row .t { display: grid; gap: 4px; min-width: 0; }
+.shop-row .cnt { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
 .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 22px 18px; display: grid; gap: 8px; background: var(--surface); }
 </style>
 </head>
@@ -90,6 +101,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     <button type="button" role="tab" id="tab-add" aria-selected="true">Добавить</button>
     <button type="button" role="tab" id="tab-wardrobe" aria-selected="false">Гардероб</button>
     <button type="button" role="tab" id="tab-outfits" aria-selected="false">Образы</button>
+    <button type="button" role="tab" id="tab-shop" aria-selected="false">Докупить</button>
     <button type="button" role="tab" id="tab-settings" aria-selected="false">Настройка</button>
   </nav>
 
@@ -137,6 +149,17 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       <div class="status" id="oStatus" aria-live="polite"></div>
     </div>
     <div id="oHost"></div>
+  </section>
+
+  <!-- SHOP -->
+  <section id="view-shop" role="tabpanel" hidden style="display:grid;gap:14px">
+    <div class="panel">
+      <h2>Пазлы к гардеробу</h2>
+      <p class="small muted">Вещи, которые стоит докупить, чтобы твои вещи заиграли. Сверху то, что подойдёт к большему числу твоих вещей. Ссылки ведут на поиск в магазинах.</p>
+      <button type="button" class="btn" id="makePuzzles" hidden>Подобрать пазлы к вещам без них</button>
+      <div class="status" id="pStatus" aria-live="polite"></div>
+    </div>
+    <div id="shopHost"></div>
   </section>
 
   <!-- SETTINGS -->
@@ -285,10 +308,14 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     return gh("/contents/profile.json", { raw: true }).then(function (t) { profileCache = JSON.parse(t.replace(/^﻿/, "")).text || ""; return profileCache; })
       .catch(function () { return "Цветотип мягкое лето, фигура песочные часы, высокий рост, стиль мягкий минимализм."; });
   }
+  var PUZZLE_SHAPE = '{"item": "что купить: цвет из её палитры + конкретная вещь, например «Тонкий ремень цвета какао»", "category": "Верх | Низ | Платье | Верхняя одежда | Обувь | Сумка | Аксессуар", ' +
+    '"color": {"name": "цвет", "hex": "#RRGGBB"}, "why": "1 предложение: как эта покупка исправит или дополнит вещь", "search": "короткий поисковый запрос на польском для Zalando/Vinted, например «pasek damski cienki brązowy»"}';
+  var PUZZLE_RULE = "puzzle — 1–3 вещи, которых нет в её гардеробе и которые стоит докупить, чтобы эта вещь заиграла: для «с поправкой» то, что исправит проблему (ремень, шарф её цвета у лица, юбка с высокой посадкой), для «моё» то, что даст новые образы, для «не моё» — чем заменить вещь. Выбирай универсальные вещи в её палитре и под её фигуру. Одинаковые покупки называй одинаково.";
   var ITEM_SHAPE = '{"name": "короткое название по-русски, например «Белая футболка оверсайз»", "category": "одно из: ' + CATS.join(", ") +
     '", "colors": [{"name": "название цвета", "hex": "#RRGGBB"}], "color_verdict": "мой | можно | не мой", "color_why": "1–2 простых предложения", ' +
     '"cut_verdict": "мой | можно | не мой", "cut_why": "1–2 простых предложения", "verdict": "моё | с поправкой | не моё", ' +
-    '"tip": "одно-два конкретных предложения: как носить или как исправить", "style": "к какому стилю относится вещь"}';
+    '"tip": "одно-два конкретных предложения: как носить или как исправить", "style": "к какому стилю относится вещь", ' +
+    '"puzzle": [' + PUZZLE_SHAPE + ']}';
   var RULES = "Правила: цвет оценивай для лица; если вещь носится далеко от лица (брюки, юбка, обувь, сумка), цвет почти всегда «можно», если он не кислотный. " +
     "Фасон оценивай по фигуре «песочные часы»: всё, что показывает талию, — «мой»; прямое бесформенное — «можно», если его можно заправить или подпоясать, иначе «не мой». " +
     "«С поправкой» значит: вещь можно носить, если сделать то, что в tip. Пиши по-русски, просто, на «ты», как подруга-стилист. Оценивай только вещь, не человека.";
@@ -334,6 +361,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       verdict: VERD[a.verdict] ? a.verdict : "с поправкой",
       tip: String(a.tip || "").slice(0, 500),
       style: String(a.style || "").slice(0, 60),
+      puzzle: cleanPuzzle(a.puzzle),
       by: "gemini"
     };
   }
@@ -347,9 +375,10 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     setUp("Оцениваю вещь…");
     return Promise.all([getProfile(), readWardrobe().then(function (w) { return w.d; }).catch(function () { return {}; })]).then(function (r) {
       var prompt = "Ты стилист. На фото одна вещь одежды, обуви или аксессуар (на вешалке, разложена или скриншот из магазина). Если вещей несколько, оцени главную.\n\n" +
-        "Профиль клиентки:\n" + r[0] + "\n\n" + RULES + "\n\n";
+        "Профиль клиентки:\n" + r[0] + "\n\n" + RULES + "\n" + PUZZLE_RULE + "\n\n" +
+        "Вещи, которые у неё уже есть (их в puzzle не предлагай):\n" + (listText(r[1]) || "пока нет") + "\n\n";
       if (isCheck) {
-        prompt += "Клиентка думает, покупать ли эту вещь. Её гардероб (id | категория | название | цвета | оценка):\n" + (listText(r[1]) || "пока пуст") +
+        prompt += "Клиентка думает, покупать ли эту вещь. В pairs_with укажи id вещей из списка выше, с которыми её носить." +
           "\n\nОтветь только JSON: " + ITEM_SHAPE.slice(0, -1) + ', "buy": "брать | подумать | не брать", "buy_why": "1–2 предложения", "pairs_with": ["id вещей из гардероба, до 4"]}';
       } else {
         prompt += "Ответь только JSON: " + ITEM_SHAPE;
@@ -393,10 +422,68 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
   }
 
   // tabs
-  var TABS = ["add", "wardrobe", "outfits", "settings"];
+  var TABS = ["add", "wardrobe", "outfits", "shop", "settings"];
   function showTab(t) {
     TABS.forEach(function (x) { $("tab-" + x).setAttribute("aria-selected", x === t ? "true" : "false"); $("view-" + x).hidden = x !== t; });
-    if ((t === "wardrobe" || t === "outfits") && token()) loadData();
+    if ((t === "wardrobe" || t === "outfits" || t === "shop") && token()) loadData();
+  }
+
+  // ---------- puzzle pieces ----------
+  var SHOPS = [["Zalando", "https://www.zalando.pl/catalog/?q="], ["H&M", "https://www2.hm.com/pl_pl/search-results.html?q="], ["Vinted", "https://www.vinted.pl/catalog?search_text="], ["Allegro", "https://allegro.pl/listing?string="]];
+  function linksEl(q) {
+    var l = el("div", { class: "links" });
+    if (!q) return l;
+    SHOPS.forEach(function (s) { l.appendChild(el("a", { href: s[1] + encodeURIComponent(q), target: "_blank", rel: "noopener" }, s[0])); });
+    return l;
+  }
+  function cleanPuzzle(arr) {
+    var hex = function (h) { return typeof h === "string" && /^#[0-9a-fA-F]{6}$/.test(h) ? h : "#cccccc"; };
+    return (Array.isArray(arr) ? arr : []).slice(0, 3).map(function (p) {
+      return { item: String(p && p.item || "").slice(0, 90), category: String(p && p.category || ""), color: { name: String(p && p.color && p.color.name || ""), hex: hex(p && p.color && p.color.hex) }, why: String(p && p.why || "").slice(0, 300), search: String(p && p.search || "").slice(0, 80) };
+    }).filter(function (p) { return p.item; });
+  }
+  function puzzleEl(list, title) {
+    var box = el("div", { class: "pz" });
+    if (!list || !list.length) return box;
+    box.appendChild(el("div", { class: "pz-h" }, title || "Пазл: что докупить"));
+    list.forEach(function (p) {
+      var r = el("div", { class: "pz-item" });
+      var dot = el("i"); dot.style.background = (p.color && p.color.hex) || "#ccc"; r.appendChild(dot);
+      r.appendChild(el("b", null, p.item));
+      if (p.why) { r.appendChild(el("span")); r.appendChild(el("p", null, p.why)); }
+      r.appendChild(el("span")); r.appendChild(linksEl(p.search));
+      box.appendChild(r);
+    });
+    return box;
+  }
+  function renderShop() {
+    var host = $("shopHost"); host.innerHTML = "";
+    $("makePuzzles").hidden = !gkey();
+    var items = (data && data.items) || [];
+    var map = {}, order = [];
+    function add(p, forName) {
+      var k = p.item.toLowerCase().replace(/\s+/g, " ").trim();
+      if (!map[k]) { map[k] = { p: p, for: [] }; order.push(k); }
+      if (forName && map[k].for.indexOf(forName) < 0) map[k].for.push(forName);
+    }
+    items.forEach(function (i) { (i.puzzle || []).forEach(function (p) { add(p, i.name); }); });
+    ((data && data.outfits) || []).forEach(function (o) { (o.buy || []).forEach(function (p) { add(p, "образ «" + o.title + "»"); }); });
+    if (!order.length) { host.appendChild(el("div", { class: "empty" }, "Пазлов пока нет. Напиши Claude «подбери пазлы» или нажми кнопку выше (нужен ключ Gemini).")); return; }
+    order.sort(function (a, b) { return map[b].for.length - map[a].for.length; });
+    var panel = el("div", { class: "panel" });
+    order.forEach(function (k) {
+      var m = map[k], p = m.p;
+      var r = el("div", { class: "shop-row" });
+      var dot = el("i"); dot.style.background = (p.color && p.color.hex) || "#ccc"; r.appendChild(dot);
+      var t = el("div", { class: "t" });
+      t.appendChild(el("b", null, p.item));
+      t.appendChild(el("span", { class: "cnt" }, "подойдёт к: " + m.for.length));
+      t.appendChild(el("p", { class: "small muted" }, m.for.join(", ")));
+      var l = linksEl(p.search); l.style.gridColumn = "auto"; t.appendChild(l);
+      r.appendChild(t);
+      panel.appendChild(r);
+    });
+    host.appendChild(panel);
   }
   TABS.forEach(function (x) { $("tab-" + x).addEventListener("click", function () { showTab(x); }); });
   $("goSettings").addEventListener("click", function () { showTab("settings"); });
@@ -509,7 +596,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       var known = {}; (data.items || []).forEach(function (i) { known[i.photo] = 1; });
       var waiting = (r[1] || []).filter(function (f) { return /\.jpg$/i.test(f.name) && !known["photos/" + f.name]; });
       $("wStatus").textContent = "";
-      renderWardrobe(waiting); renderOutfits();
+      renderWardrobe(waiting); renderOutfits(); renderShop();
     }).catch(function (e) { $("wStatus").textContent = errText(e); })
       .then(function () { loading = false; });
   }
@@ -572,7 +659,9 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       if (it.color_why) d.appendChild(el("p", null, "Цвет (" + (it.color_verdict || "") + "): " + it.color_why));
       if (it.cut_why) d.appendChild(el("p", null, "Фасон (" + (it.cut_verdict || "") + "): " + it.cut_why));
       if (it.tip) d.appendChild(el("p", null, "Совет: " + it.tip));
+      d.appendChild(puzzleEl(it.puzzle, it.verdict === "не моё" ? "Что купить взамен" : "Пазл: что докупить"));
       m.appendChild(d);
+      if (it.puzzle && it.puzzle.length) m.appendChild(el("span", { class: "small muted" }, "Пазл: " + it.puzzle.length + " " + (it.puzzle.length === 1 ? "вещь" : "вещи")));
       card.appendChild(m);
       g.appendChild(card);
     });
@@ -603,7 +692,8 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       if (!(d.items || []).length) throw { ai: "noitems" };
       var prompt = "Ты стилист. Собери образы ТОЛЬКО из вещей гардероба клиентки.\n\nПрофиль клиентки:\n" + r[0] + "\n\nГардероб (id | категория | название | цвета | оценка):\n" + listText(d) +
         "\n\nСобери до 10 разных образов на её жизнь: работа из дома, прогулка, встреча с друзьями, вечер, холодная погода. Каждый образ — 2–5 вещей, включая обувь, если она есть; вещи сочетаются по цвету и вместе показывают талию. Вещи «не моё» не используй. Пиши по-русски, просто, на «ты».\n\n" +
-        'Ответь только JSON: {"outfits": [{"title": "короткое название", "occasion": "куда", "items": ["id"], "why": "1–2 предложения: почему работает и как надеть"}], "gaps": [{"item": "чего не хватает: конкретный цвет и фасон", "why": "сколько образов это даст"}]}' +
+        "Если образу не хватает одной вещи (ремня, шарфа её цвета, обуви, украшения), добавь её в buy, иначе оставь buy пустым.\n\n" +
+        'Ответь только JSON: {"outfits": [{"title": "короткое название", "occasion": "куда", "items": ["id"], "why": "1–2 предложения: почему работает и как надеть", "buy": [' + PUZZLE_SHAPE + ']}], "gaps": [{"item": "чего не хватает: конкретный цвет и фасон", "why": "сколько образов это даст"}]}' +
         "\nВ items только id из списка. В gaps 2–4 покупки.";
       return gemini(prompt);
     }).then(function (raw) {
@@ -611,12 +701,33 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       return updateWardrobe(function (d) {
         var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });
         d.outfits = raw.outfits.slice(0, 12).map(function (o) {
-          return { title: String(o.title || "Образ"), occasion: String(o.occasion || ""), why: String(o.why || ""), items: (Array.isArray(o.items) ? o.items : []).map(String).filter(function (x) { return ids[x]; }) };
+          return { title: String(o.title || "Образ"), occasion: String(o.occasion || ""), why: String(o.why || ""), items: (Array.isArray(o.items) ? o.items : []).map(String).filter(function (x) { return ids[x]; }), buy: cleanPuzzle(o.buy).slice(0, 1) };
         }).filter(function (o) { return o.items.length >= 2; });
         d.gaps = (Array.isArray(raw.gaps) ? raw.gaps : []).slice(0, 5).map(function (g) { return { item: String(g.item || ""), why: String(g.why || "") }; });
       }, "Образы Gemini");
     }).then(function () { $("oStatus").textContent = "Готово."; renderOutfits(); }, function (e) {
       $("oStatus").textContent = e && e.ai === "noitems" ? "Сначала добавь вещи." : aiErrText(e);
+    }).then(function () { btn.disabled = false; });
+  });
+  $("makePuzzles").addEventListener("click", function () {
+    var btn = $("makePuzzles"); btn.disabled = true;
+    $("pStatus").textContent = "Подбираю пазлы, до минуты…";
+    Promise.all([getProfile(), readWardrobe()]).then(function (r) {
+      var d = r[1].d;
+      var need = (d.items || []).filter(function (i) { return !(i.puzzle && i.puzzle.length); });
+      if (!need.length) throw { ai: "allset" };
+      var prompt = "Ты стилист. Для каждой вещи из списка «Нужны пазлы» подбери, что докупить.\n\nПрофиль клиентки:\n" + r[0] + "\n\n" + PUZZLE_RULE +
+        "\n\nВесь гардероб (id | категория | название | цвета | оценка):\n" + listText(d) +
+        "\n\nНужны пазлы для: " + need.map(function (i) { return i.id; }).join(", ") +
+        '\n\nОтветь только JSON: {"puzzles": {"id вещи": [' + PUZZLE_SHAPE + ']}}. Пиши по-русски, поисковые запросы на польском.';
+      return gemini(prompt).then(function (raw) {
+        if (!raw || typeof raw.puzzles !== "object") throw { ai: "badjson" };
+        return updateWardrobe(function (dd) {
+          dd.items.forEach(function (i) { if (!(i.puzzle && i.puzzle.length) && raw.puzzles[i.id]) i.puzzle = cleanPuzzle(raw.puzzles[i.id]); });
+        }, "Пазлы Gemini");
+      });
+    }).then(function () { $("pStatus").textContent = "Готово."; renderShop(); loadData(); }, function (e) {
+      $("pStatus").textContent = e && e.ai === "allset" ? "У всех вещей уже есть пазлы." : aiErrText(e);
     }).then(function () { btn.disabled = false; });
   });
   function renderOutfits() {
@@ -635,6 +746,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       p.appendChild(s);
       p.appendChild(el("p", { class: "small" }, o.items.map(function (id) { return byId[id] ? byId[id].name : ""; }).filter(Boolean).join(" + ")));
       if (o.why) p.appendChild(el("p", { class: "small muted" }, o.why));
+      p.appendChild(puzzleEl(o.buy, "Докупить к образу"));
       host.appendChild(p);
     });
     var gaps = (data && data.gaps) || [];
