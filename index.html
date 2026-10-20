@@ -112,12 +112,13 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
         <input type="file" id="galInput" accept="image/*" multiple aria-label="Выбрать фото из галереи">
       </label>
       <div class="status" id="upStatus" aria-live="polite"></div>
+      <div id="lastResult"></div>
       <p class="small muted">Снимай вещь целиком при дневном свете на светлом фоне: на кровати, на двери, на вешалке. Одна вещь на фото.</p>
     </div>
     <div class="panel" id="sessionPanel" hidden>
       <h3>Загружено сейчас</h3>
       <div class="thumbs" id="sessionThumbs"></div>
-      <p class="small">Когда загрузишь всё, напиши Claude в чате: <b>«оцени гардероб»</b>. Оценки и образы появятся во вкладках «Гардероб» и «Образы».</p>
+      <p class="small" id="sessionHint">Когда загрузишь всё, напиши Claude в чате: <b>«оцени гардероб»</b>. Оценки и образы появятся во вкладках «Гардероб» и «Образы».</p>
     </div>
   </section>
 
@@ -131,6 +132,10 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
 
   <!-- OUTFITS -->
   <section id="view-outfits" role="tabpanel" hidden style="display:grid;gap:14px">
+    <div style="display:grid;gap:6px">
+      <button type="button" class="btn" id="makeOutfits" hidden>Собрать образы заново</button>
+      <div class="status" id="oStatus" aria-live="polite"></div>
+    </div>
     <div id="oHost"></div>
   </section>
 
@@ -155,6 +160,23 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       </div>
       <div class="status" id="tokStatus" aria-live="polite"></div>
       <p class="small muted">Ключ хранится только в браузере этого телефона и никуда, кроме GitHub, не отправляется. Никому его не показывай.</p>
+    </div>
+    <div class="panel">
+      <h2>Автоматическая оценка (Gemini)</h2>
+      <p class="small muted">С ключом Gemini каждая вещь оценивается сразу после фото, без Claude. Бесплатно в пределах лимита Google.</p>
+      <ol class="steps small">
+        <li>Открой <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> и войди в Google-аккаунт.</li>
+        <li>Нажми <b>Create API key</b> и скопируй ключ (начинается с <span class="mono">AIza</span>).</li>
+        <li>Вставь его ниже и нажми «Сохранить и проверить».</li>
+      </ol>
+      <label for="gemInput" class="small"><b>Ключ Gemini</b></label>
+      <input type="password" id="gemInput" autocomplete="off" spellcheck="false" placeholder="AIza…">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn" id="saveGem">Сохранить и проверить</button>
+        <button type="button" class="btn ghost" id="clearGem">Удалить ключ Gemini</button>
+      </div>
+      <div class="status" id="gemStatus" aria-live="polite"></div>
+      <p class="small muted">Ключ хранится только в этом браузере. На бесплатном тарифе Google может использовать фото для улучшения моделей, поэтому отправляй только фото одежды, без селфи.</p>
     </div>
     <div class="panel">
       <h3>Иконка на главном экране</h3>
@@ -203,6 +225,165 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     return "Ошибка GitHub (" + e.status + "). Попробуй ещё раз.";
   }
 
+  // ---------- AI (Gemini) ----------
+  var CATS = ["Верх", "Низ", "Платье", "Верхняя одежда", "Обувь", "Сумка", "Аксессуар"];
+  var PART = { "мой": 1, "можно": 1, "не мой": 1 };
+  var MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.0-flash"];
+  function gkey() { try { return localStorage.getItem("gemini-key") || ""; } catch (e) { return ""; } }
+  function setGkey(k) { try { if (k) localStorage.setItem("gemini-key", k); else localStorage.removeItem("gemini-key"); } catch (e) {} }
+  function parseJSON(t) {
+    t = String(t || "").trim();
+    try { return JSON.parse(t); } catch (e) {}
+    var m = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (m) { try { return JSON.parse(m[1]); } catch (e) {} }
+    var a = t.indexOf("{"), b = t.lastIndexOf("}");
+    if (a >= 0 && b > a) { try { return JSON.parse(t.slice(a, b + 1)); } catch (e) {} }
+    throw { ai: "badjson" };
+  }
+  function gemini(prompt, b64) {
+    var parts = [{ text: prompt }];
+    if (b64) parts.push({ inline_data: { mime_type: "image/jpeg", data: b64 } });
+    var body = JSON.stringify({ contents: [{ role: "user", parts: parts }], generationConfig: { responseMimeType: "application/json", temperature: 0.4 } });
+    function tryModel(i) {
+      return fetch("https://generativelanguage.googleapis.com/v1beta/models/" + MODELS[i] + ":generateContent", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": gkey() }, body: body
+      }).then(function (r) {
+        if (r.status === 404 && i + 1 < MODELS.length) return tryModel(i + 1);
+        if (!r.ok) return r.text().then(function (t) { throw { gstatus: r.status, gtext: t }; });
+        return r.json();
+      });
+    }
+    return tryModel(0).then(function (j) {
+      var c = j && j.candidates && j.candidates[0];
+      var ps = c && c.content && c.content.parts;
+      if (!ps) throw { ai: "empty" };
+      return parseJSON(ps.map(function (p) { return p.text || ""; }).join(""));
+    });
+  }
+  function aiErrText(e) {
+    if (e && e.gstatus) {
+      if (e.gstatus === 400 && /API key/i.test(e.gtext || "")) return "Ключ Gemini не подходит. Проверь его во вкладке «Настройка».";
+      if (e.gstatus === 429) return "Бесплатный лимит Gemini на минуту исчерпан. Подожди минуту, фото сохранено, оценишь кнопкой во вкладке «Гардероб».";
+      if (e.gstatus === 403) return "Gemini отказал в доступе. Проверь ключ во вкладке «Настройка».";
+      return "Gemini ответил ошибкой (" + e.gstatus + "). Фото сохранено, попробуй оценить позже.";
+    }
+    if (e && e.ai === "unclear") return "Gemini не разглядел вещь" + (e.msg ? ": " + e.msg : "") + ". Попробуй переснять.";
+    if (e && e.ai) return "Не получилось разобрать ответ Gemini. Фото сохранено, попробуй оценить позже.";
+    if (e && e.status) return errText(e);
+    return "Нет связи с Gemini. Фото сохранено, оценишь позже во вкладке «Гардероб».";
+  }
+  var profileCache = null;
+  function getProfile() {
+    if (profileCache) return Promise.resolve(profileCache);
+    return gh("/contents/profile.json", { raw: true }).then(function (t) { profileCache = JSON.parse(t.replace(/^﻿/, "")).text || ""; return profileCache; })
+      .catch(function () { return "Цветотип мягкое лето, фигура песочные часы, высокий рост, стиль мягкий минимализм."; });
+  }
+  var ITEM_SHAPE = '{"name": "короткое название по-русски, например «Белая футболка оверсайз»", "category": "одно из: ' + CATS.join(", ") +
+    '", "colors": [{"name": "название цвета", "hex": "#RRGGBB"}], "color_verdict": "мой | можно | не мой", "color_why": "1–2 простых предложения", ' +
+    '"cut_verdict": "мой | можно | не мой", "cut_why": "1–2 простых предложения", "verdict": "моё | с поправкой | не моё", ' +
+    '"tip": "одно-два конкретных предложения: как носить или как исправить", "style": "к какому стилю относится вещь"}';
+  var RULES = "Правила: цвет оценивай для лица; если вещь носится далеко от лица (брюки, юбка, обувь, сумка), цвет почти всегда «можно», если он не кислотный. " +
+    "Фасон оценивай по фигуре «песочные часы»: всё, что показывает талию, — «мой»; прямое бесформенное — «можно», если его можно заправить или подпоясать, иначе «не мой». " +
+    "«С поправкой» значит: вещь можно носить, если сделать то, что в tip. Пиши по-русски, просто, на «ты», как подруга-стилист. Оценивай только вещь, не человека.";
+  function listText(d) {
+    return ((d && d.items) || []).map(function (i) {
+      return i.id + " | " + i.category + " | " + i.name + " | цвета: " + (i.colors || []).map(function (c) { return c.name; }).join(", ") + " | оценка: " + i.verdict;
+    }).join("\n");
+  }
+  function readWardrobe() {
+    return gh("/contents/wardrobe.json").then(function (f) {
+      var bin = atob(String(f.content).replace(/\s/g, "")), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return { sha: f.sha, d: JSON.parse(new TextDecoder().decode(bytes).replace(/^﻿/, "")) };
+    });
+  }
+  function textToB64(t) {
+    var bytes = new TextEncoder().encode(t), s = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  function updateWardrobe(mutate, msg, attempt) {
+    return readWardrobe().then(function (w) {
+      var d = w.d; d.items = d.items || []; d.outfits = d.outfits || []; d.gaps = d.gaps || []; d.checks = d.checks || [];
+      mutate(d); d.updatedAt = new Date().toISOString();
+      return gh("/contents/wardrobe.json", { method: "PUT", body: { message: msg, content: textToB64(JSON.stringify(d, null, 2) + "\n"), sha: w.sha } })
+        .then(function () { data = d; return d; });
+    }).catch(function (e) {
+      if (e && e.status === 409 && (attempt || 0) < 2) return updateWardrobe(mutate, msg, (attempt || 0) + 1);
+      throw e;
+    });
+  }
+  function cleanA(a) {
+    if (!a || typeof a !== "object" || a.error) return null;
+    var hex = function (h) { return typeof h === "string" && /^#[0-9a-fA-F]{6}$/.test(h) ? h : "#cccccc"; };
+    return {
+      name: String(a.name || "Вещь").slice(0, 80),
+      category: CATS.indexOf(a.category) >= 0 ? a.category : "Аксессуар",
+      colors: (Array.isArray(a.colors) ? a.colors : []).slice(0, 3).map(function (c) { return { name: String(c && c.name || "").slice(0, 40), hex: hex(c && c.hex) }; }),
+      color_verdict: PART[a.color_verdict] ? a.color_verdict : "можно",
+      color_why: String(a.color_why || "").slice(0, 500),
+      cut_verdict: PART[a.cut_verdict] ? a.cut_verdict : "можно",
+      cut_why: String(a.cut_why || "").slice(0, 500),
+      verdict: VERD[a.verdict] ? a.verdict : "с поправкой",
+      tip: String(a.tip || "").slice(0, 500),
+      style: String(a.style || "").slice(0, 60),
+      by: "gemini"
+    };
+  }
+  function nextId(d) {
+    var n = 0;
+    (d.items || []).forEach(function (i) { var m = /^w(\d+)$/.exec(i.id || ""); if (m) n = Math.max(n, +m[1]); });
+    return "w" + String(n + 1).padStart(3, "0");
+  }
+  function analyzeAndSave(path, b64) {
+    var isCheck = path.indexOf("check/") === 0;
+    setUp("Оцениваю вещь…");
+    return Promise.all([getProfile(), readWardrobe().then(function (w) { return w.d; }).catch(function () { return {}; })]).then(function (r) {
+      var prompt = "Ты стилист. На фото одна вещь одежды, обуви или аксессуар (на вешалке, разложена или скриншот из магазина). Если вещей несколько, оцени главную.\n\n" +
+        "Профиль клиентки:\n" + r[0] + "\n\n" + RULES + "\n\n";
+      if (isCheck) {
+        prompt += "Клиентка думает, покупать ли эту вещь. Её гардероб (id | категория | название | цвета | оценка):\n" + (listText(r[1]) || "пока пуст") +
+          "\n\nОтветь только JSON: " + ITEM_SHAPE.slice(0, -1) + ', "buy": "брать | подумать | не брать", "buy_why": "1–2 предложения", "pairs_with": ["id вещей из гардероба, до 4"]}';
+      } else {
+        prompt += "Ответь только JSON: " + ITEM_SHAPE;
+      }
+      prompt += "\nВ colors 1–3 главных цвета. Если на фото нет одежды или её не разглядеть, ответь {\"error\": \"что не так с фото\"}.";
+      return gemini(prompt, b64);
+    }).then(function (raw) {
+      var a = cleanA(raw);
+      if (!a) throw { ai: "unclear", msg: raw && raw.error };
+      return updateWardrobe(function (d) {
+        a.photo = path;
+        if (isCheck) {
+          a.buy = { "брать": 1, "подумать": 1, "не брать": 1 }[raw.buy] ? raw.buy : "подумать";
+          a.buy_why = String(raw.buy_why || "").slice(0, 500);
+          var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });
+          a.pairs_with = (Array.isArray(raw.pairs_with) ? raw.pairs_with : []).map(String).filter(function (x) { return ids[x]; }).slice(0, 4);
+          d.checks = d.checks.filter(function (c) { return c.photo !== path; }); d.checks.push(a);
+        } else {
+          d.items = d.items.filter(function (i) { return i.photo !== path; });
+          a.id = nextId(d); d.items.push(a);
+        }
+      }, "Оценка Gemini: " + a.name).then(function () { showResult(a, isCheck); return a; });
+    });
+  }
+  function showResult(a, isCheck) {
+    var host = $("lastResult"); host.innerHTML = "";
+    var p = el("div", { class: "panel" });
+    p.appendChild(el("div", { class: "eyebrow" }, a.category));
+    p.appendChild(el("h3", null, a.name));
+    if (isCheck) {
+      var bk = { "брать": "good", "подумать": "warn", "не брать": "bad" }[a.buy];
+      p.appendChild(el("span", { class: "badge " + bk }, "Совет: " + a.buy));
+      if (a.buy_why) p.appendChild(el("p", { class: "small" }, a.buy_why));
+    } else {
+      p.appendChild(el("span", { class: "badge " + VERD[a.verdict] }, VLAB[a.verdict]));
+    }
+    p.appendChild(el("p", { class: "small" }, "Цвет (" + a.color_verdict + "): " + a.color_why));
+    p.appendChild(el("p", { class: "small" }, "Фасон (" + a.cut_verdict + "): " + a.cut_why));
+    if (a.tip) p.appendChild(el("p", { class: "small" }, "Совет: " + a.tip));
+    host.appendChild(p);
+  }
+
   // tabs
   var TABS = ["add", "wardrobe", "outfits", "settings"];
   function showTab(t) {
@@ -216,6 +397,10 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     var has = !!token();
     $("needToken").hidden = has;
     $("addPanel").hidden = !has;
+    $("sessionHint").innerHTML = gkey()
+      ? "Каждая вещь оценивается сразу после фото, результат выше. Все оценки во вкладке «Гардероб», образы собираются во вкладке «Образы»."
+      : "Когда загрузишь всё, напиши Claude в чате: <b>«оцени гардероб»</b>. Или добавь ключ Gemini в «Настройке», и оценка будет сразу.";
+    if ($("makeOutfits")) $("makeOutfits").hidden = !gkey();
   }
 
   // destination toggle
@@ -271,11 +456,16 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       return toBase64(blob).then(function (b64) {
         var path = job.dest + "/" + stamp() + ".jpg";
         return gh("/contents/" + path, { method: "PUT", body: { message: (job.dest === "check" ? "Проверить: " : "Вещь: ") + path, content: b64 } })
-          .then(function () { okCount++; addThumb(blob, job.dest); });
+          .then(function () {
+            okCount++; addThumb(blob, job.dest);
+            if (!gkey()) return;
+            return analyzeAndSave(path, b64).catch(function (e) { setUp(aiErrText(e), true); throw { shown: true }; });
+          });
       });
     }).then(function () {
       setUp(queue.length ? "" : "Готово, загружено: " + okCount + ". Можно снимать следующую вещь.");
     }, function (e) {
+      if (e && e.shown) return;
       setUp(e && e.decode ? "Фото не открылось. Попробуй ещё раз или выбери другое." : errText(e), true);
     }).then(function () { busy = false; pump(); });
   }
@@ -335,7 +525,27 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     if (waiting.length) {
       var w = el("div", { class: "panel" });
       w.appendChild(el("b", null, "Ждут оценки: " + waiting.length + " фото"));
-      w.appendChild(el("p", { class: "small muted" }, "Напиши Claude в чате «оцени гардероб», и оценки появятся здесь."));
+      if (gkey()) {
+        var go = el("button", { type: "button", class: "btn" }, "Оценить сейчас");
+        var st = el("div", { class: "status", "aria-live": "polite" });
+        go.addEventListener("click", function () {
+          go.disabled = true;
+          var list = waiting.slice(), done = 0;
+          (function next() {
+            var f = list.shift();
+            if (!f) { st.textContent = "Готово, оценено: " + done + "."; loadData(); return; }
+            st.textContent = "Оцениваю " + (done + 1) + " из " + (done + list.length + 1) + "…";
+            var path = "photos/" + f.name;
+            gh("/contents/" + path, { raw: "blob" }).then(function (b) {
+              return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(String(fr.result).split(",")[1]); }; fr.onerror = rej; fr.readAsDataURL(b); });
+            }).then(function (b64) { return analyzeAndSave(path, b64); })
+              .then(function () { done++; next(); }, function (e) { st.textContent = aiErrText(e); st.classList.add("err"); go.disabled = false; loadData(); });
+          })();
+        });
+        w.appendChild(go); w.appendChild(st);
+      } else {
+        w.appendChild(el("p", { class: "small muted" }, "Напиши Claude в чате «оцени гардероб» или добавь ключ Gemini во вкладке «Настройка»."));
+      }
       host.appendChild(w);
     }
     if (!items.length) {
@@ -377,7 +587,32 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       ch.appendChild(g2);
     }
   }
+  $("makeOutfits").addEventListener("click", function () {
+    var btn = $("makeOutfits"); btn.disabled = true;
+    $("oStatus").textContent = "Собираю образы, до минуты…";
+    Promise.all([getProfile(), readWardrobe()]).then(function (r) {
+      var d = r[1].d;
+      if (!(d.items || []).length) throw { ai: "noitems" };
+      var prompt = "Ты стилист. Собери образы ТОЛЬКО из вещей гардероба клиентки.\n\nПрофиль клиентки:\n" + r[0] + "\n\nГардероб (id | категория | название | цвета | оценка):\n" + listText(d) +
+        "\n\nСобери до 10 разных образов на её жизнь: работа из дома, прогулка, встреча с друзьями, вечер, холодная погода. Каждый образ — 2–5 вещей, включая обувь, если она есть; вещи сочетаются по цвету и вместе показывают талию. Вещи «не моё» не используй. Пиши по-русски, просто, на «ты».\n\n" +
+        'Ответь только JSON: {"outfits": [{"title": "короткое название", "occasion": "куда", "items": ["id"], "why": "1–2 предложения: почему работает и как надеть"}], "gaps": [{"item": "чего не хватает: конкретный цвет и фасон", "why": "сколько образов это даст"}]}' +
+        "\nВ items только id из списка. В gaps 2–4 покупки.";
+      return gemini(prompt);
+    }).then(function (raw) {
+      if (!raw || !Array.isArray(raw.outfits)) throw { ai: "badjson" };
+      return updateWardrobe(function (d) {
+        var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });
+        d.outfits = raw.outfits.slice(0, 12).map(function (o) {
+          return { title: String(o.title || "Образ"), occasion: String(o.occasion || ""), why: String(o.why || ""), items: (Array.isArray(o.items) ? o.items : []).map(String).filter(function (x) { return ids[x]; }) };
+        }).filter(function (o) { return o.items.length >= 2; });
+        d.gaps = (Array.isArray(raw.gaps) ? raw.gaps : []).slice(0, 5).map(function (g) { return { item: String(g.item || ""), why: String(g.why || "") }; });
+      }, "Образы Gemini");
+    }).then(function () { $("oStatus").textContent = "Готово."; renderOutfits(); }, function (e) {
+      $("oStatus").textContent = e && e.ai === "noitems" ? "Сначала добавь вещи." : aiErrText(e);
+    }).then(function () { btn.disabled = false; });
+  });
   function renderOutfits() {
+    $("makeOutfits").hidden = !gkey();
     var host = $("oHost"); host.innerHTML = "";
     var items = (data && data.items) || [];
     var byId = {}; items.forEach(function (i) { byId[i.id] = i; });
@@ -417,6 +652,18 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     }).catch(function (e) { $("tokStatus").textContent = errText(e); });
   });
   $("clearToken").addEventListener("click", function () { setToken(""); refreshGate(); $("tokStatus").textContent = "Ключ удалён с этого телефона."; });
+
+  $("saveGem").addEventListener("click", function () {
+    var k = $("gemInput").value.trim();
+    if (!k) { $("gemStatus").textContent = "Вставь ключ в поле."; return; }
+    setGkey(k);
+    $("gemStatus").textContent = "Проверяю…";
+    gemini('Ответь только JSON: {"ok": true}').then(function () {
+      $("gemStatus").textContent = "Готово, Gemini подключён. Теперь каждая вещь будет оцениваться сразу после фото.";
+      $("gemInput").value = ""; refreshGate();
+    }).catch(function (e) { $("gemStatus").textContent = aiErrText(e); });
+  });
+  $("clearGem").addEventListener("click", function () { setGkey(""); refreshGate(); $("gemStatus").textContent = "Ключ Gemini удалён с этого устройства."; });
 
   refreshGate();
   if (!token()) showTab("settings");
