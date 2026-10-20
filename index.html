@@ -551,6 +551,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
             var tx = el("div");
             tx.appendChild(el("div", null, p.title || "Вещь"));
             tx.appendChild(el("div", { class: "small muted" }, [p.shop, p.price].filter(Boolean).join(" · ")));
+            if (p.note) tx.appendChild(el("div", { class: "small" }, p.note));
             r.appendChild(tx);
             pb.appendChild(r);
           });
@@ -563,7 +564,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
   }
 
   // ---------- puzzle pieces ----------
-  var SHOPS = [["Zalando", "https://www.zalando.pl/catalog/?q="], ["H&M", "https://www2.hm.com/pl_pl/search-results.html?q="], ["Vinted", "https://www.vinted.pl/catalog?search_text="], ["Allegro", "https://allegro.pl/listing?string="]];
+  var SHOPS = [["Zalando", "https://www.zalando.pl/kobiety/?q="], ["Zara", "https://www.zara.com/pl/pl/search?searchTerm="], ["H&M", "https://www2.hm.com/pl_pl/search-results.html?q="], ["Reserved", "https://www.reserved.com/pl/pl/search?q="], ["Sinsay", "https://www.sinsay.com/pl/pl/search?q="], ["Shein", "https://pl.shein.com/pdsearch/"], ["Vinted", "https://www.vinted.pl/catalog?search_text="], ["Allegro", "https://allegro.pl/listing?string="]];
   function linksEl(q) {
     var l = el("div", { class: "links" });
     if (!q) return l;
