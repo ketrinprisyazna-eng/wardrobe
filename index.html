@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Мой гардероб</title>
+<meta name="theme-color" content="#7A2E46">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Commissioner:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Prata&display=swap">
+<style>
+/* Phone-first wardrobe uploader: big camera button, uploads go to a private GitHub repo; Claude writes verdicts back to wardrobe.json. */
+:root {
+  --bg: #F4F3F5; --surface: #FFFFFF; --fg: #26222B; --muted: #6C6672; --line: #E0DCE3;
+  --accent: #7A2E46; --accent-soft: #F1E3E8;
+  --good: #2F7A55; --good-soft: #E1F0E7; --warn: #9A6A12; --warn-soft: #F6EDD8; --bad: #A8323E; --bad-soft: #F6E0E2;
+  --font-display: "Prata", Georgia, serif;
+  --font-body: "Commissioner", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #16141A; --surface: #1F1C24; --fg: #EDEAF0; --muted: #A59FAB; --line: #34303A; --accent: #D98AA3; --accent-soft: #3A2430;
+    --good: #7BC4A0; --good-soft: #1E3328; --warn: #E2B866; --warn-soft: #3A2F18; --bad: #EE8C95; --bad-soft: #3D2024; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+img { max-width: 100%; }
+.wrap { max-width: 820px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 72px; display: grid; gap: 18px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 400; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(28px, 7vw, 40px); line-height: 1.1; }
+h2 { font-size: 21px; } h3 { font-size: 17px; }
+p { margin: 0; }
+a { color: var(--accent); }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.muted { color: var(--muted); } .small { font-size: 13px; }
+.tabs { position: sticky; top: 0; z-index: 5; background: var(--bg); padding-block: 8px; display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.tabs button { font: inherit; font-size: 14px; white-space: nowrap; padding: 8px 14px; border-radius: 999px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--surface); border-color: var(--line); color: var(--fg); font-weight: 600; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.btn { font: inherit; font-size: 15px; border-radius: 12px; padding: 12px 18px; border: 1px solid var(--accent); background: var(--accent); color: var(--bg); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; }
+.btn.ghost { background: transparent; color: var(--accent); }
+.btn.big { font-size: 17px; padding: 18px; width: 100%; }
+.btn:disabled { opacity: .45; }
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+.ico { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linejoin: round; flex: none; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button { font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+.seg button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+.status { font-size: 14px; color: var(--accent); min-height: 21px; }
+.status.err { color: var(--bad); }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
+.thumbs figure { margin: 0; display: grid; gap: 3px; }
+.thumbs img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.thumbs figcaption { font-size: 11.5px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; display: grid; align-content: start; }
+.card .ph { aspect-ratio: 3 / 4; background: var(--bg); }
+.card .ph img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card .meta { padding: 8px 10px 10px; display: grid; gap: 6px; }
+.card .name { font-size: 13.5px; font-weight: 500; line-height: 1.3; }
+.card details summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+.card details p { font-size: 13px; margin-top: 6px; }
+.badge { justify-self: start; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; }
+.badge.good { color: var(--good); background: var(--good-soft); } .badge.warn { color: var(--warn); background: var(--warn-soft); } .badge.bad { color: var(--bad); background: var(--bad-soft); } .badge.wait { color: var(--muted); background: var(--bg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.outfit .strip { display: flex; gap: 8px; overflow-x: auto; }
+.outfit .strip img { width: 84px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); flex: none; }
+ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+ol.steps code, .mono { font-family: var(--font-mono); font-size: 13px; background: var(--bg); padding: 1px 5px; border-radius: 4px; }
+input[type=password], input[type=text] { font: inherit; font-size: 16px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; width: 100%; }
+.btn:focus-visible, .tabs button:focus-visible, .seg button:focus-visible, input:focus-visible, .file-btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.empty { border: 1px dashed var(--line); border-radius: 12px; padding: 22px 18px; display: grid; gap: 8px; background: var(--surface); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Мягкое лето · песочные часы</div>
+    <h1>Мой гардероб</h1>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Разделы">
+    <button type="button" role="tab" id="tab-add" aria-selected="true">Добавить</button>
+    <button type="button" role="tab" id="tab-wardrobe" aria-selected="false">Гардероб</button>
+    <button type="button" role="tab" id="tab-outfits" aria-selected="false">Образы</button>
+    <button type="button" role="tab" id="tab-settings" aria-selected="false">Настройка</button>
+  </nav>
+
+  <!-- ADD -->
+  <section id="view-add" role="tabpanel" style="display:grid;gap:14px">
+    <div class="panel" id="needToken" hidden>
+      <b>Сначала один раз подключи хранилище.</b>
+      <p class="small muted">Это займёт 2 минуты, инструкция во вкладке «Настройка».</p>
+      <button type="button" class="btn" id="goSettings">Открыть настройку</button>
+    </div>
+    <div class="panel" id="addPanel">
+      <div class="seg" role="group" aria-label="Куда добавить">
+        <button type="button" id="dest-photos" aria-pressed="true">Моя вещь</button>
+        <button type="button" id="dest-check" aria-pressed="false">Из магазина, проверить</button>
+      </div>
+      <label class="btn big file-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Сфотографировать
+        <input type="file" id="camInput" accept="image/*" capture="environment" aria-label="Сфотографировать вещь">
+      </label>
+      <label class="btn ghost big file-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M5 18l5-5 4 4 2-2 3 3"/></svg>Выбрать из галереи
+        <input type="file" id="galInput" accept="image/*" multiple aria-label="Выбрать фото из галереи">
+      </label>
+      <div class="status" id="upStatus" aria-live="polite"></div>
+      <p class="small muted">Снимай вещь целиком при дневном свете на светлом фоне: на кровати, на двери, на вешалке. Одна вещь на фото.</p>
+    </div>
+    <div class="panel" id="sessionPanel" hidden>
+      <h3>Загружено сейчас</h3>
+      <div class="thumbs" id="sessionThumbs"></div>
+      <p class="small">Когда загрузишь всё, напиши Claude в чате: <b>«оцени гардероб»</b>. Оценки и образы появятся во вкладках «Гардероб» и «Образы».</p>
+    </div>
+  </section>
+
+  <!-- WARDROBE -->
+  <section id="view-wardrobe" role="tabpanel" hidden style="display:grid;gap:14px">
+    <div class="status" id="wStatus" aria-live="polite"></div>
+    <div class="chips" id="wStats"></div>
+    <div id="wGrid"></div>
+    <div id="wChecks"></div>
+  </section>
+
+  <!-- OUTFITS -->
+  <section id="view-outfits" role="tabpanel" hidden style="display:grid;gap:14px">
+    <div id="oHost"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="view-settings" role="tabpanel" hidden style="display:grid;gap:14px">
+    <div class="panel">
+      <h2>Подключить хранилище</h2>
+      <p class="small muted">Фото сохраняются в твой приватный репозиторий <span class="mono">wardrobe-data</span> на GitHub. Их видишь только ты и Claude. Чтобы телефон мог туда загружать, нужен ключ доступа. Делается один раз.</p>
+      <ol class="steps small">
+        <li>Открой <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">страницу создания ключа</a> и войди в аккаунт <b>ketrinprisyazna-eng</b>.</li>
+        <li><b>Token name:</b> напиши <code>гардероб</code>. <b>Expiration:</b> выбери 1 год (Custom, дата через год).</li>
+        <li><b>Repository access:</b> выбери <i>Only select repositories</i> и отметь <code>wardrobe-data</code>.</li>
+        <li><b>Permissions → Repository permissions → Contents:</b> выбери <i>Read and write</i>.</li>
+        <li>Нажми <b>Generate token</b> внизу, потом нажми на значок копирования рядом с ключом.</li>
+        <li>Вставь ключ в поле ниже и нажми «Сохранить».</li>
+      </ol>
+      <label for="tokenInput" class="small"><b>Ключ</b> (начинается с <span class="mono">github_pat_</span>)</label>
+      <input type="password" id="tokenInput" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn" id="saveToken">Сохранить и проверить</button>
+        <button type="button" class="btn ghost" id="clearToken">Удалить ключ с телефона</button>
+      </div>
+      <div class="status" id="tokStatus" aria-live="polite"></div>
+      <p class="small muted">Ключ хранится только в браузере этого телефона и никуда, кроме GitHub, не отправляется. Никому его не показывай.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var OWNER = "ketrinprisyazna-eng", REPO = "wardrobe-data";
+  var API = "https://api.github.com/repos/" + OWNER + "/" + REPO;
+  var VERD = { "моё": "good", "с поправкой": "warn", "не моё": "bad" };
+  var VLAB = { "моё": "Моё", "с поправкой": "С поправкой", "не моё": "Не моё" };
+  var dest = "photos";
+  var data = null;
+  var blobCache = {};
+
+  function $(id) { return document.getElementById(id); }
+  function el(tag, attrs, text) {
+    var e = document.createElement(tag);
+    if (attrs) for (var k in attrs) { if (k === "class") e.className = attrs[k]; else e.setAttribute(k, attrs[k]); }
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function token() { try { return localStorage.getItem("gh-token") || ""; } catch (e) { return ""; } }
+  function setToken(t) { try { if (t) localStorage.setItem("gh-token", t); else localStorage.removeItem("gh-token"); } catch (e) {} }
+
+  function gh(path, opts) {
+    opts = opts || {};
+    var headers = { "Authorization": "Bearer " + token(), "X-GitHub-Api-Version": "2022-11-28", "Accept": opts.raw ? "application/vnd.github.raw+json" : "application/vnd.github+json" };
+    if (opts.body) headers["Content-Type"] = "application/json";
+    return fetch(API + path, { method: opts.method || "GET", headers: headers, body: opts.body ? JSON.stringify(opts.body) : undefined, cache: "no-store" })
+      .then(function (r) {
+        if (!r.ok) throw { status: r.status };
+        return opts.raw === "blob" ? r.blob() : opts.raw ? r.text() : r.json();
+      });
+  }
+  function errText(e) {
+    if (!e || !e.status) return "Нет связи с GitHub. Проверь интернет и попробуй ещё раз.";
+    if (e.status === 401) return "Ключ не подходит или истёк. Создай новый во вкладке «Настройка».";
+    if (e.status === 403) return "У ключа нет права записи. Проверь шаг 4 в «Настройке»: Contents — Read and write.";
+    if (e.status === 404) return "Ключ не видит репозиторий wardrobe-data. Проверь шаг 3 в «Настройке».";
+    if (e.status === 422) return "GitHub не принял фото. Попробуй ещё раз.";
+    return "Ошибка GitHub (" + e.status + "). Попробуй ещё раз.";
+  }
+
+  // tabs
+  var TABS = ["add", "wardrobe", "outfits", "settings"];
+  function showTab(t) {
+    TABS.forEach(function (x) { $("tab-" + x).setAttribute("aria-selected", x === t ? "true" : "false"); $("view-" + x).hidden = x !== t; });
+    if ((t === "wardrobe" || t === "outfits") && token()) loadData();
+  }
+  TABS.forEach(function (x) { $("tab-" + x).addEventListener("click", function () { showTab(x); }); });
+  $("goSettings").addEventListener("click", function () { showTab("settings"); });
+
+  function refreshGate() {
+    var has = !!token();
+    $("needToken").hidden = has;
+    $("addPanel").hidden = !has;
+  }
+
+  // destination toggle
+  ["photos", "check"].forEach(function (d) {
+    $("dest-" + d).addEventListener("click", function () {
+      dest = d;
+      $("dest-photos").setAttribute("aria-pressed", d === "photos" ? "true" : "false");
+      $("dest-check").setAttribute("aria-pressed", d === "check" ? "true" : "false");
+    });
+  });
+
+  // image prep
+  function shrink(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, 1400 / Math.max(w, h));
+        var c = document.createElement("canvas");
+        c.width = Math.round(w * k); c.height = Math.round(h * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(function (b) { b ? resolve(b) : reject({ decode: true }); }, "image/jpeg", 0.86);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject({ decode: true }); };
+      img.src = url;
+    });
+  }
+  function toBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result).split(",")[1]); };
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+  }
+  function stamp() {
+    var d = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "_" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + "_" + Math.random().toString(36).slice(2, 6);
+  }
+
+  // upload queue
+  var queue = [], busy = false, okCount = 0;
+  function setUp(t, err) { var s = $("upStatus"); s.textContent = t; s.classList.toggle("err", !!err); }
+  function pump() {
+    if (busy) return;
+    var job = queue.shift();
+    if (!job) return;
+    busy = true;
+    var left = queue.length;
+    setUp("Загружаю фото…" + (left ? " Ещё в очереди: " + left : ""));
+    shrink(job.file).then(function (blob) {
+      return toBase64(blob).then(function (b64) {
+        var path = job.dest + "/" + stamp() + ".jpg";
+        return gh("/contents/" + path, { method: "PUT", body: { message: (job.dest === "check" ? "Проверить: " : "Вещь: ") + path, content: b64 } })
+          .then(function () { okCount++; addThumb(blob, job.dest); });
+      });
+    }).then(function () {
+      setUp(queue.length ? "" : "Готово, загружено: " + okCount + ". Можно снимать следующую вещь.");
+    }, function (e) {
+      setUp(e && e.decode ? "Фото не открылось. Попробуй ещё раз или выбери другое." : errText(e), true);
+    }).then(function () { busy = false; pump(); });
+  }
+  function addThumb(blob, d) {
+    $("sessionPanel").hidden = false;
+    var f = el("figure");
+    var i = el("img", { alt: "" }); i.src = URL.createObjectURL(blob);
+    f.appendChild(i); f.appendChild(el("figcaption", null, d === "check" ? "на проверку" : "в гардероб"));
+    $("sessionThumbs").prepend(f);
+  }
+  ["camInput", "galInput"].forEach(function (id) {
+    $(id).addEventListener("change", function (ev) {
+      var files = Array.prototype.slice.call(ev.target.files || []);
+      ev.target.value = "";
+      if (!files.length) return;
+      if (!token()) { showTab("settings"); return; }
+      files.forEach(function (f) { queue.push({ file: f, dest: dest }); });
+      pump();
+    });
+  });
+
+  // load wardrobe.json and photos
+  var loading = false;
+  function loadData() {
+    if (loading) return;
+    loading = true;
+    $("wStatus").textContent = "Загружаю гардероб…";
+    Promise.all([
+      gh("/contents/wardrobe.json", { raw: true }).then(function (t) { return JSON.parse(t); }),
+      gh("/contents/photos").catch(function () { return []; })
+    ]).then(function (r) {
+      data = r[0] || {};
+      var known = {}; (data.items || []).forEach(function (i) { known[i.photo] = 1; });
+      var waiting = (r[1] || []).filter(function (f) { return /\.jpg$/i.test(f.name) && !known["photos/" + f.name]; });
+      $("wStatus").textContent = "";
+      renderWardrobe(waiting); renderOutfits();
+    }).catch(function (e) { $("wStatus").textContent = errText(e); })
+      .then(function () { loading = false; });
+  }
+  function photoImg(path, alt) {
+    var img = el("img", { alt: alt || "", loading: "lazy" });
+    if (blobCache[path]) { img.src = blobCache[path]; return img; }
+    gh("/contents/" + path.split("/").map(encodeURIComponent).join("/"), { raw: "blob" }).then(function (b) {
+      blobCache[path] = URL.createObjectURL(b); img.src = blobCache[path];
+    }).catch(function () { img.alt = "фото не загрузилось"; });
+    return img;
+  }
+  function renderWardrobe(waiting) {
+    var items = (data && data.items) || [];
+    var stats = $("wStats"); stats.innerHTML = "";
+    var c = { "моё": 0, "с поправкой": 0, "не моё": 0 };
+    items.forEach(function (i) { if (c[i.verdict] != null) c[i.verdict]++; });
+    [["Всего", items.length, ""], ["Моё", c["моё"], "good"], ["С поправкой", c["с поправкой"], "warn"], ["Не моё", c["не моё"], "bad"]].forEach(function (s) {
+      stats.appendChild(el("span", { class: "badge " + (s[2] || "wait") }, s[0] + ": " + s[1]));
+    });
+    var host = $("wGrid"); host.innerHTML = "";
+    if (waiting.length) {
+      var w = el("div", { class: "panel" });
+      w.appendChild(el("b", null, "Ждут оценки: " + waiting.length + " фото"));
+      w.appendChild(el("p", { class: "small muted" }, "Напиши Claude в чате «оцени гардероб», и оценки появятся здесь."));
+      host.appendChild(w);
+    }
+    if (!items.length) {
+      if (!waiting.length) host.appendChild(el("div", { class: "empty" }, "Пока пусто. Сфотографируй вещи во вкладке «Добавить»."));
+      return;
+    }
+    var g = el("div", { class: "grid" });
+    items.forEach(function (it) {
+      var card = el("div", { class: "card" });
+      var ph = el("div", { class: "ph" }); ph.appendChild(photoImg(it.photo, it.name)); card.appendChild(ph);
+      var m = el("div", { class: "meta" });
+      m.appendChild(el("div", { class: "name" }, it.name || "Вещь"));
+      if (VERD[it.verdict]) m.appendChild(el("span", { class: "badge " + VERD[it.verdict] }, VLAB[it.verdict]));
+      var d = el("details");
+      d.appendChild(el("summary", null, "Почему"));
+      if (it.color_why) d.appendChild(el("p", null, "Цвет (" + (it.color_verdict || "") + "): " + it.color_why));
+      if (it.cut_why) d.appendChild(el("p", null, "Фасон (" + (it.cut_verdict || "") + "): " + it.cut_why));
+      if (it.tip) d.appendChild(el("p", null, "Совет: " + it.tip));
+      m.appendChild(d);
+      card.appendChild(m);
+      g.appendChild(card);
+    });
+    host.appendChild(g);
+    var checks = (data && data.checks) || [];
+    var ch = $("wChecks"); ch.innerHTML = "";
+    if (checks.length) {
+      ch.appendChild(el("h2", null, "Проверка перед покупкой"));
+      var g2 = el("div", { class: "grid" });
+      checks.forEach(function (it) {
+        var card = el("div", { class: "card" });
+        var ph = el("div", { class: "ph" }); ph.appendChild(photoImg(it.photo, it.name)); card.appendChild(ph);
+        var m = el("div", { class: "meta" });
+        m.appendChild(el("div", { class: "name" }, it.name || "Вещь"));
+        var bk = { "брать": "good", "подумать": "warn", "не брать": "bad" }[it.buy] || "wait";
+        m.appendChild(el("span", { class: "badge " + bk }, it.buy ? "Совет: " + it.buy : "Ждёт оценки"));
+        if (it.buy_why) m.appendChild(el("p", { class: "small" }, it.buy_why));
+        card.appendChild(m); g2.appendChild(card);
+      });
+      ch.appendChild(g2);
+    }
+  }
+  function renderOutfits() {
+    var host = $("oHost"); host.innerHTML = "";
+    var items = (data && data.items) || [];
+    var byId = {}; items.forEach(function (i) { byId[i.id] = i; });
+    var outfits = ((data && data.outfits) || []).filter(function (o) { return (o.items || []).some(function (id) { return byId[id]; }); });
+    if (!outfits.length) { host.appendChild(el("div", { class: "empty" }, "Образов пока нет. Загрузи вещи и напиши Claude «собери образы».")); return; }
+    outfits.forEach(function (o) {
+      var p = el("div", { class: "panel outfit" });
+      if (o.occasion) p.appendChild(el("div", { class: "eyebrow" }, o.occasion));
+      p.appendChild(el("h3", null, o.title || "Образ"));
+      var s = el("div", { class: "strip" });
+      o.items.forEach(function (id) { if (byId[id]) s.appendChild(photoImg(byId[id].photo, byId[id].name)); });
+      p.appendChild(s);
+      p.appendChild(el("p", { class: "small" }, o.items.map(function (id) { return byId[id] ? byId[id].name : ""; }).filter(Boolean).join(" + ")));
+      if (o.why) p.appendChild(el("p", { class: "small muted" }, o.why));
+      host.appendChild(p);
+    });
+    var gaps = (data && data.gaps) || [];
+    if (gaps.length) {
+      var gp = el("div", { class: "panel" });
+      gp.appendChild(el("h3", null, "Чего не хватает"));
+      gaps.forEach(function (g) { gp.appendChild(el("p", { class: "small" }, "• " + (g.item || "") + (g.why ? ". " + g.why : ""))); });
+      host.appendChild(gp);
+    }
+  }
+
+  // settings
+  $("saveToken").addEventListener("click", function () {
+    var t = $("tokenInput").value.trim();
+    if (!t) { $("tokStatus").textContent = "Вставь ключ в поле."; return; }
+    setToken(t);
+    $("tokStatus").textContent = "Проверяю…";
+    gh("").then(function (repo) {
+      if (repo && repo.permissions && repo.permissions.push === false) throw { status: 403 };
+      $("tokStatus").textContent = "Готово, хранилище подключено. Переходи во вкладку «Добавить».";
+      $("tokenInput").value = "";
+      refreshGate();
+    }).catch(function (e) { $("tokStatus").textContent = errText(e); });
+  });
+  $("clearToken").addEventListener("click", function () { setToken(""); refreshGate(); $("tokStatus").textContent = "Ключ удалён с этого телефона."; });
+
+  refreshGate();
+  if (!token()) showTab("settings");
+})();
+</script>
+</body>
+</html>
