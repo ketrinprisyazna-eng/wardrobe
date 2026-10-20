@@ -244,9 +244,15 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     if (b64) parts.push({ inline_data: { mime_type: "image/jpeg", data: b64 } });
     var body = JSON.stringify({ contents: [{ role: "user", parts: parts }], generationConfig: { responseMimeType: "application/json", temperature: 0.4 } });
     function tryModel(i) {
+      var ctl = new AbortController();
+      var timer = setTimeout(function () { ctl.abort(); }, 60000);
       return fetch("https://generativelanguage.googleapis.com/v1beta/models/" + MODELS[i] + ":generateContent", {
-        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": gkey() }, body: body
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": gkey() }, body: body, signal: ctl.signal
+      }).catch(function (e) {
+        clearTimeout(timer);
+        throw (e && e.name === "AbortError") ? { ai: "timeout" } : { ai: "network" };
       }).then(function (r) {
+        clearTimeout(timer);
         if (r.status === 404 && i + 1 < MODELS.length) return tryModel(i + 1);
         if (!r.ok) return r.text().then(function (t) { throw { gstatus: r.status, gtext: t }; });
         return r.json();
@@ -266,6 +272,8 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       if (e.gstatus === 403) return "Gemini отказал в доступе. Проверь ключ во вкладке «Настройка».";
       return "Gemini ответил ошибкой (" + e.gstatus + "). Фото сохранено, попробуй оценить позже.";
     }
+    if (e && e.ai === "timeout") return "Gemini не ответил за минуту. Проверь интернет и нажми ещё раз.";
+    if (e && e.ai === "network") return "Нет связи с Gemini. Проверь интернет и нажми ещё раз.";
     if (e && e.ai === "unclear") return "Gemini не разглядел вещь" + (e.msg ? ": " + e.msg : "") + ". Попробуй переснять.";
     if (e && e.ai) return "Не получилось разобрать ответ Gemini. Фото сохранено, попробуй оценить позже.";
     if (e && e.status) return errText(e);
@@ -657,7 +665,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     var k = $("gemInput").value.trim();
     if (!k) { $("gemStatus").textContent = "Вставь ключ в поле."; return; }
     setGkey(k);
-    $("gemStatus").textContent = "Проверяю…";
+    $("gemStatus").textContent = "Проверяю ключ, это может занять до 30 секунд…";
     gemini('Ответь только JSON: {"ok": true}').then(function () {
       $("gemStatus").textContent = "Готово, Gemini подключён. Теперь каждая вещь будет оцениваться сразу после фото.";
       $("gemInput").value = ""; refreshGate();
