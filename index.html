@@ -214,7 +214,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
   var OWNER = "ketrinprisyazna-eng", REPO = "wardrobe-data";
   var API = "https://api.github.com/repos/" + OWNER + "/" + REPO;
   var VERD = { "моё": "good", "с поправкой": "warn", "не моё": "bad" };
-  var VLAB = { "моё": "Моё", "с поправкой": "С поправкой", "не моё": "Не моё" };
+  var VLAB = { "моё": "Моё", "с поправкой": "С поправкой", "не моё": "Не моё: продать" };
   var dest = "photos";
   var data = null;
   var blobCache = {};
@@ -318,7 +318,10 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     '"puzzle": [' + PUZZLE_SHAPE + ']}';
   var RULES = "Правила: цвет оценивай для лица; если вещь носится далеко от лица (брюки, юбка, обувь, сумка), цвет почти всегда «можно», если он не кислотный. " +
     "Фасон оценивай по фигуре «песочные часы»: всё, что показывает талию, — «мой»; прямое бесформенное — «можно», если его можно заправить или подпоясать, иначе «не мой». " +
-    "«С поправкой» значит: вещь можно носить, если сделать то, что в tip. Пиши по-русски, просто, на «ты», как подруга-стилист. Оценивай только вещь, не человека.";
+    "«С поправкой» значит: вещь можно носить, если сделать то, что в tip. " +
+    "СТРОГОЕ ПРАВИЛО клиентки: говори честно, без смягчений. Если цвет у лица не её (например чёрный, почти чёрный, яркий, рыжий верх, платье, пальто, худи) — color_verdict «не мой». " +
+    "Если фасон не её — cut_verdict «не мой». Если хотя бы одно «не мой» — verdict «не моё», и в tip прямо напиши «Продай или отдай» и чем заменить. " +
+    "Пиши по-русски, просто, на «ты», как подруга-стилист. Оценивай только вещь, не человека.";
   function listText(d) {
     return ((d && d.items) || []).map(function (i) {
       return i.id + " | " + i.category + " | " + i.name + " | цвета: " + (i.colors || []).map(function (c) { return c.name; }).join(", ") + " | оценка: " + i.verdict;
@@ -365,6 +368,13 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       by: "gemini"
     };
   }
+  function strict(o) {
+    if (o.color_verdict === "не мой" || o.cut_verdict === "не мой") {
+      o.verdict = "не моё"; o.action = "продать";
+      if (!/прода/i.test(o.tip)) o.tip = "Продай или отдай. " + o.tip;
+    } else o.action = "оставить";
+    return o;
+  }
   function nextId(d) {
     var n = 0;
     (d.items || []).forEach(function (i) { var m = /^w(\d+)$/.exec(i.id || ""); if (m) n = Math.max(n, +m[1]); });
@@ -388,11 +398,13 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     }).then(function (raw) {
       var a = cleanA(raw);
       if (!a) throw { ai: "unclear", msg: raw && raw.error };
+      strict(a);
       return updateWardrobe(function (d) {
         a.photo = path;
         if (isCheck) {
           a.buy = { "брать": 1, "подумать": 1, "не брать": 1 }[raw.buy] ? raw.buy : "подумать";
           a.buy_why = String(raw.buy_why || "").slice(0, 500);
+          if (a.verdict === "не моё") a.buy = "не брать";
           var ids = {}; d.items.forEach(function (i) { ids[i.id] = 1; });
           a.pairs_with = (Array.isArray(raw.pairs_with) ? raw.pairs_with : []).map(String).filter(function (x) { return ids[x]; }).slice(0, 4);
           d.checks = d.checks.filter(function (c) { return c.photo !== path; }); d.checks.push(a);
@@ -613,7 +625,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     var stats = $("wStats"); stats.innerHTML = "";
     var c = { "моё": 0, "с поправкой": 0, "не моё": 0 };
     items.forEach(function (i) { if (c[i.verdict] != null) c[i.verdict]++; });
-    [["Всего", items.length, ""], ["Моё", c["моё"], "good"], ["С поправкой", c["с поправкой"], "warn"], ["Не моё", c["не моё"], "bad"]].forEach(function (s) {
+    [["Всего", items.length, ""], ["Моё", c["моё"], "good"], ["С поправкой", c["с поправкой"], "warn"], ["Продать", c["не моё"], "bad"]].forEach(function (s) {
       stats.appendChild(el("span", { class: "badge " + (s[2] || "wait") }, s[0] + ": " + s[1]));
     });
     var host = $("wGrid"); host.innerHTML = "";
