@@ -176,10 +176,11 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       <p class="small muted" id="fNote"></p>
       <div class="fprog"><div class="fbar"><div id="fFill"></div></div><span class="mono" id="fCount"></span></div>
       <div class="seg" role="group" aria-label="Показать">
-        <button type="button" id="ff-all" aria-pressed="true">Все</button>
+        <button type="button" id="ff-now" aria-pressed="true">Сейчас по сезону</button>
         <button type="button" id="ff-first" aria-pressed="false">Купить в первую очередь</button>
         <button type="button" id="ff-need" aria-pressed="false">Нужно купить</button>
         <button type="button" id="ff-have" aria-pressed="false">Уже есть</button>
+        <button type="button" id="ff-all" aria-pressed="false">Все сезоны</button>
       </div>
     </div>
     <div class="status" id="fStatus" aria-live="polite"></div>
@@ -345,7 +346,8 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
   }
   var PUZZLE_SHAPE = '{"item": "что купить: цвет из её палитры + конкретная вещь, например «Тонкий ремень цвета какао»", "category": "Верх | Низ | Платье | Верхняя одежда | Обувь | Сумка | Аксессуар", ' +
     '"color": {"name": "цвет", "hex": "#RRGGBB"}, "why": "1 предложение: как эта покупка исправит или дополнит вещь", "search": "короткий поисковый запрос на польском для Zalando/Vinted, например «pasek damski cienki brązowy»"}';
-  var PUZZLE_RULE = "puzzle — 1–3 вещи, которых нет в её гардеробе и которые стоит докупить, чтобы эта вещь заиграла: для «с поправкой» то, что исправит проблему (ремень, шарф её цвета у лица, юбка с высокой посадкой), для «моё» то, что даст новые образы, для «не моё» — чем заменить вещь. Выбирай универсальные вещи в её палитре и под её фигуру. Одинаковые покупки называй одинаково.";
+  var PUZZLE_RULE = "puzzle — 1–3 вещи, которых нет в её гардеробе и которые стоит докупить, чтобы эта вещь заиграла: для «с поправкой» то, что исправит проблему (ремень, шарф её цвета у лица, юбка с высокой посадкой), для «моё» то, что даст новые образы, для «не моё» — чем заменить вещь. Выбирай универсальные вещи в её палитре и под её фигуру. Одинаковые покупки называй одинаково. " +
+    "Сейчас сезон «" + currentSeason() + "» (она живёт в Польше): предлагай вещи для этого сезона, летние вещи осенью и тёплые весной не предлагай.";
   var ITEM_SHAPE = '{"name": "короткое название по-русски, например «Белая футболка оверсайз»", "category": "одно из: ' + CATS.join(", ") +
     '", "colors": [{"name": "название цвета", "hex": "#RRGGBB"}], "color_verdict": "мой | можно | не мой", "color_why": "1–2 простых предложения", ' +
     '"cut_verdict": "мой | можно | не мой", "cut_why": "1–2 простых предложения", "verdict": "моё | с поправкой | не моё", ' +
@@ -476,14 +478,20 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
   }
 
   // ---------- future wardrobe ----------
-  var fFilter = "all";
-  ["all", "first", "need", "have"].forEach(function (k) {
+  var FF = ["now", "first", "need", "have", "all"];
+  var fFilter = "now";
+  FF.forEach(function (k) {
     $("ff-" + k).addEventListener("click", function () {
       fFilter = k;
-      ["all", "first", "need", "have"].forEach(function (x) { $("ff-" + x).setAttribute("aria-pressed", x === k ? "true" : "false"); });
+      FF.forEach(function (x) { $("ff-" + x).setAttribute("aria-pressed", x === k ? "true" : "false"); });
       renderFuture();
     });
   });
+  function currentSeason() {
+    var m = new Date().getMonth() + 1;
+    return (m >= 9 || m <= 2) ? "осень-зима" : "весна-лето";
+  }
+  function inSeason(f) { return !f.season || f.season === "всесезон" || f.season === currentSeason(); }
   function setFutureStatus(fid, status) {
     $("fStatus").textContent = "Сохраняю…";
     updateWardrobe(function (d) {
@@ -500,9 +508,11 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     var all = fut.items, got = all.filter(function (f) { return f.status !== "нужно"; }).length;
     $("fCount").textContent = got + " из " + all.length;
     $("fFill").style.width = Math.round(got / all.length * 100) + "%";
+    $("fNote").textContent = "Сейчас " + currentSeason() + ". " + (fut.note || "");
     var list = all.filter(function (f) {
-      if (fFilter === "first") return f.status === "нужно" && f.priority === 1;
-      if (fFilter === "need") return f.status === "нужно";
+      if (fFilter === "now") return inSeason(f);
+      if (fFilter === "first") return f.status === "нужно" && f.priority === 1 && inSeason(f);
+      if (fFilter === "need") return f.status === "нужно" && inSeason(f);
       if (fFilter === "have") return f.status !== "нужно";
       return true;
     });
@@ -525,6 +535,7 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
         if (f.status === "есть") row.appendChild(el("span", { class: "badge good" }, "Есть"));
         else if (f.status === "куплено") row.appendChild(el("span", { class: "badge good" }, "Куплено"));
         else row.appendChild(el("span", { class: "badge " + (f.priority === 1 ? "bad" : "warn") }, f.priority === 1 ? "Купить первым" : "Купить"));
+        if (f.season && f.season !== "всесезон") row.appendChild(el("span", { class: "badge " + (inSeason(f) ? "wait" : "warn") }, inSeason(f) ? f.season : "на " + f.season));
         if (f.color && f.color.name) row.appendChild(el("span", { class: "small muted" }, f.color.name));
         t.appendChild(row);
         top.appendChild(t);
@@ -826,7 +837,8 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
       var d = r[1].d;
       if (!(d.items || []).length) throw { ai: "noitems" };
       var prompt = "Ты стилист. Собери образы ТОЛЬКО из вещей гардероба клиентки.\n\nПрофиль клиентки:\n" + r[0] + "\n\nГардероб (id | категория | название | цвета | оценка):\n" + listText(d) +
-        "\n\nСобери до 10 разных образов на её жизнь: работа из дома, прогулка, встреча с друзьями, вечер, холодная погода. Каждый образ — 2–5 вещей, включая обувь, если она есть; вещи сочетаются по цвету и вместе показывают талию. Вещи «не моё» не используй. Пиши по-русски, просто, на «ты».\n\n" +
+        "\n\nСейчас сезон «" + currentSeason() + "», она живёт в Польше: образы должны подходить под эту погоду (осенью и зимой с тёплым верхом и закрытой обувью)." +
+        "\nСобери до 10 разных образов на её жизнь: работа из дома, прогулка, встреча с друзьями, вечер. Каждый образ — 2–5 вещей, включая обувь, если она есть; вещи сочетаются по цвету и вместе показывают талию. Вещи «не моё» не используй. Пиши по-русски, просто, на «ты».\n\n" +
         "Если образу не хватает одной вещи (ремня, шарфа её цвета, обуви, украшения), добавь её в buy, иначе оставь buy пустым.\n\n" +
         'Ответь только JSON: {"outfits": [{"title": "короткое название", "occasion": "куда", "items": ["id"], "why": "1–2 предложения: почему работает и как надеть", "buy": [' + PUZZLE_SHAPE + ']}], "gaps": [{"item": "чего не хватает: конкретный цвет и фасон", "why": "сколько образов это даст"}]}' +
         "\nВ items только id из списка. В gaps 2–4 покупки.";
