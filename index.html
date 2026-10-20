@@ -136,13 +136,13 @@ input[type=password], input[type=text] { font: inherit; font-size: 16px; color: 
     <div class="panel">
       <h2>Подключить хранилище</h2>
       <p class="small muted">Фото сохраняются в твой приватный репозиторий <span class="mono">wardrobe-data</span> на GitHub. Их видишь только ты и Claude. Чтобы телефон мог туда загружать, нужен ключ доступа. Делается один раз.</p>
+      <a class="btn big" href="https://github.com/settings/personal-access-tokens/new?name=garderob-phone&amp;description=%D0%97%D0%B0%D0%B3%D1%80%D1%83%D0%B7%D0%BA%D0%B0%20%D1%84%D0%BE%D1%82%D0%BE%20%D0%B3%D0%B0%D1%80%D0%B4%D0%B5%D1%80%D0%BE%D0%B1%D0%B0&amp;target_name=ketrinprisyazna-eng&amp;expires_in=365&amp;contents=write" target="_blank" rel="noopener">1. Создать ключ на GitHub</a>
       <ol class="steps small">
-        <li>Открой <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">страницу создания ключа</a> и войди в аккаунт <b>ketrinprisyazna-eng</b>.</li>
-        <li><b>Token name:</b> напиши <code>гардероб</code>. <b>Expiration:</b> выбери 1 год (Custom, дата через год).</li>
-        <li><b>Repository access:</b> выбери <i>Only select repositories</i> и отметь <code>wardrobe-data</code>.</li>
-        <li><b>Permissions → Repository permissions → Contents:</b> выбери <i>Read and write</i>.</li>
-        <li>Нажми <b>Generate token</b> внизу, потом нажми на значок копирования рядом с ключом.</li>
-        <li>Вставь ключ в поле ниже и нажми «Сохранить».</li>
+        <li>Нажми кнопку выше и войди в аккаунт <b>ketrinprisyazna-eng</b>. Название, срок и права уже заполнены.</li>
+        <li>В блоке <b>Repository access</b> выбери <i>Only select repositories</i> и отметь <code>wardrobe-data</code>.</li>
+        <li>Проверь, что в <b>Permissions</b> у <b>Contents</b> стоит <i>Read and write</i>. Если нет, выбери.</li>
+        <li>Нажми зелёную кнопку <b>Generate token</b> внизу, затем значок копирования рядом с ключом.</li>
+        <li>Вернись сюда, вставь ключ в поле ниже и нажми «Сохранить и проверить».</li>
       </ol>
       <label for="tokenInput" class="small"><b>Ключ</b> (начинается с <span class="mono">github_pat_</span>)</label>
       <input type="password" id="tokenInput" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
